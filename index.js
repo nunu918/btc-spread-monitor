@@ -6,19 +6,19 @@ export default {
       const paraRes = await fetch("https://api.prod.paradex.trade/v1/bbo/BTC-USD-PERP");
       const paraData = await paraRes.json();
 
-      const paraBid = paraData?.best_bid;
-      const paraAsk = paraData?.best_ask;
+      const paraBid = Number(paraData?.best_bid_price);
+      const paraAsk = Number(paraData?.best_ask_price);
 
-      if (!paraBid || !paraAsk) throw new Error("Paradex 数据异常");
+      if (!paraBid || !paraAsk) throw new Error("Paradex 返回异常");
 
       // ==== 2. Lighter BTC 盘口 ====
       const lightRes = await fetch("https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails?market_id=1");
       const lightData = await lightRes.json();
 
-      const lightBid = lightData?.bids?.[0]?.price;
-      const lightAsk = lightData?.asks?.[0]?.price;
+      const lightBid = Number(lightData?.bids?.[0]?.price);
+      const lightAsk = Number(lightData?.asks?.[0]?.price);
 
-      if (!lightBid || !lightAsk) throw new Error("Lighter 数据异常");
+      if (!lightBid || !lightAsk) throw new Error("Lighter 返回异常");
 
       // ==== 3. 计算价差 ====
       const spread_long = lightAsk - paraBid;  // Lighter 多 - Paradex 空
