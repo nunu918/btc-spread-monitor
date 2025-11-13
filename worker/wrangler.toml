@@ -1,5 +1,0 @@
-name = "btc-spread-monitor"
-main = "index.js"
-compatibility_date = "2023-05-15"
-usage_model = "bundled"
-workers_dev = true
