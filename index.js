@@ -1,128 +1,80 @@
 export default {
-  async fetch(request) {
-    const url = new URL(request.url);
+  async fetch() {
+    try {
 
-    // ------------------------------
-    // 1. API 路由：/api/spread
-    // ------------------------------
-    if (url.pathname === "/api/spread") {
-      try {
-        // --- Lighter BTC API（你填入你现在成功返回数据的 endpoint）---
-        const lighterURL = "https://mainnet.zklighter.elliot.ai/orderbook?symbol=BTC";
-        const lighterRes = await fetch(lighterURL);
-        const lighterJson = await lighterRes.json();
+      // ==== 1. Paradex BTC 盘口 ====
+      const paraRes = await fetch("https://api.prod.paradex.trade/v1/bbo/BTC-USD-PERP");
+      const paraData = await paraRes.json();
 
-        // 标准化 lighter 数据
-        const lighterBid = lighterJson?.data?.bid ?? null;
-        const lighterAsk = lighterJson?.data?.ask ?? null;
+      const paraBid = paraData?.best_bid;
+      const paraAsk = paraData?.best_ask;
 
-        if (!lighterBid || !lighterAsk) {
-          return new Response(
-            JSON.stringify({ error: "Lighter: No BTC bid/ask data", raw: lighterJson }),
-            { status: 500 }
-          );
-        }
+      if (!paraBid || !paraAsk) throw new Error("Paradex 数据异常");
 
-        // --- Paradex BTC API ---
-        const paradexURL = "https://api.paradex.trade/v1/markets/orderbook?symbol=BTC";
-        const paradexRes = await fetch(paradexURL);
-        const paradexJson = await paradexRes.json();
+      // ==== 2. Lighter BTC 盘口 ====
+      const lightRes = await fetch("https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails?market_id=1");
+      const lightData = await lightRes.json();
 
-        // 标准化 paradex 数据
-        const paradexBid = paradexJson?.data?.bids?.[0]?.price ?? null;
-        const paradexAsk = paradexJson?.data?.asks?.[0]?.price ?? null;
+      const lightBid = lightData?.bids?.[0]?.price;
+      const lightAsk = lightData?.asks?.[0]?.price;
 
-        if (!paradexBid || !paradexAsk) {
-          return new Response(
-            JSON.stringify({ error: "Paradex: No BTC bid/ask data", raw: paradexJson }),
-            { status: 500 }
-          );
-        }
+      if (!lightBid || !lightAsk) throw new Error("Lighter 数据异常");
 
-        // --- 计算价差 ---
-        const spreadBid = Number(lighterBid) - Number(paradexBid);
-        const spreadAsk = Number(lighterAsk) - Number(paradexAsk);
+      // ==== 3. 计算价差 ====
+      const spread_long = lightAsk - paraBid;  // Lighter 多 - Paradex 空
+      const spread_short = paraAsk - lightBid; // Paradex 多 - Lighter 空
 
-        return new Response(
-          JSON.stringify(
-            {
-              ok: true,
-              lighter: { bid: lighterBid, ask: lighterAsk },
-              paradex: { bid: paradexBid, ask: paradexAsk },
-              spread: { bid: spreadBid, ask: spreadAsk }
-            },
-            null,
-            2
-          ),
-          { headers: { "Content-Type": "application/json" } }
-        );
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: "Worker error", message: e.message }),
-          { status: 500 }
-        );
-      }
+      // ==== 4. 输出网页 ====
+      return new Response(
+        `
+        <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>BTC 套利监控</title>
+          <style>
+            body { font-family: Arial; padding: 20px; }
+            .box { background:#f8f8f8; padding:15px; border-radius:8px; margin: 15px 0; }
+            .title { font-size:22px; font-weight:bold; }
+            .val { font-size:26px; color:#333; font-weight:bold; }
+          </style>
+        </head>
+        <body>
+
+          <div class="title">BTC 套利监控（Paradex × Lighter）</div>
+          <br>
+
+          <div class="box">
+            <div class="title">Paradex</div>
+            Bid：<span class="val">${paraBid}</span><br>
+            Ask：<span class="val">${paraAsk}</span>
+          </div>
+
+          <div class="box">
+            <div class="title">Lighter</div>
+            Bid：<span class="val">${lightBid}</span><br>
+            Ask：<span class="val">${lightAsk}</span>
+          </div>
+
+          <div class="box">
+            <div class="title">价差</div>
+            Lighter 多 - Paradex 空 = <span class="val">${spread_long.toFixed(2)}</span><br>
+            Paradex 多 - Lighter 空 = <span class="val">${spread_short.toFixed(2)}</span>
+          </div>
+
+          <script>
+            setTimeout(() => location.reload(), 3000);
+          </script>
+
+        </body>
+        </html>
+        `,
+        { headers: { "Content-Type": "text/html;charset=UTF-8" } }
+      );
+
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        headers: { "Content-Type": "application/json" }
+      });
     }
-
-    // ------------------------------
-    // 2. 前端网页 UI
-    // ------------------------------
-    return new Response(
-      `
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <title>BTC 套利监控（Lighter × Paradex）</title>
-  <style>
-    body { font-family: Arial; padding: 20px; }
-    h1 { font-size: 24px; margin-bottom: 20px; }
-    .box { background: #f2f2f2; padding: 15px; border-radius: 8px; }
-  </style>
-</head>
-<body>
-  <h1>BTC 套利监控（Lighter × Paradex）</h1>
-
-  <div id="result" class="box">
-    加载中...
-  </div>
-
-  <script>
-    async function load() {
-      try {
-        const r = await fetch("/api/spread");
-        const j = await r.json();
-
-        if (j.error) {
-          document.getElementById("result").innerHTML =
-            "<b>错误：</b> " + j.error + "<br><pre>" + JSON.stringify(j.raw, null, 2) + "</pre>";
-          return;
-        }
-
-        document.getElementById("result").innerHTML = \`
-          <b>Lighter</b><br>
-          Bid：\${j.lighter.bid}<br>
-          Ask：\${j.lighter.ask}<br><br>
-          <b>Paradex</b><br>
-          Bid：\${j.paradex.bid}<br>
-          Ask：\${j.paradex.ask}<br><br>
-
-          <b>价差（Lighter - Paradex）</b><br>
-          Bid Spread：<span style="color: red;">\${j.spread.bid}</span><br>
-          Ask Spread：<span style="color: red;">\${j.spread.ask}</span>
-        \`;
-      } catch (err) {
-        document.getElementById("result").innerHTML = "加载失败：" + err.message;
-      }
-    }
-
-    load();
-    setInterval(load, 3000);
-  </script>
-</body>
-</html>
-`,
-      { headers: { "Content-Type": "text/html" } }
-    );
   }
 };
