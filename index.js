@@ -2,23 +2,33 @@ export default {
   async fetch() {
     try {
 
-      // ==== 1. Paradex BTC 盘口 ====
-      const paraRes = await fetch("https://api.prod.paradex.trade/v1/bbo/BTC-USD-PERP");
+      // ==== 1. Paradex BTC 盘口（加入 UA 伪装绕过风控） ====
+      const paraRes = await fetch(
+        "https://api.prod.paradex.trade/v1/bbo/BTC-USD-PERP",
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "application/json",
+            "Origin": "https://111.shiyiwei6.workers.dev",
+            "Referer": "https://111.shiyiwei6.workers.dev"
+          }
+        }
+      );
+
       const paraData = await paraRes.json();
+      const paraBid = paraData?.best_bid;
+      const paraAsk = paraData?.best_ask;
 
-      const paraBid = Number(paraData?.best_bid_price);
-      const paraAsk = Number(paraData?.best_ask_price);
-
-      if (!paraBid || !paraAsk) throw new Error("Paradex 返回异常");
+      if (!paraBid || !paraAsk) throw new Error("Paradex 数据异常（被风控）");
 
       // ==== 2. Lighter BTC 盘口 ====
       const lightRes = await fetch("https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails?market_id=1");
       const lightData = await lightRes.json();
 
-      const lightBid = Number(lightData?.bids?.[0]?.price);
-      const lightAsk = Number(lightData?.asks?.[0]?.price);
+      const lightBid = lightData?.bids?.[0]?.price;
+      const lightAsk = lightData?.asks?.[0]?.price;
 
-      if (!lightBid || !lightAsk) throw new Error("Lighter 返回异常");
+      if (!lightBid || !lightAsk) throw new Error("Lighter 数据异常");
 
       // ==== 3. 计算价差 ====
       const spread_long = lightAsk - paraBid;  // Lighter 多 - Paradex 空
@@ -32,8 +42,8 @@ export default {
           <meta charset="utf-8"/>
           <title>BTC 套利监控</title>
           <style>
-            body { font-family: Arial; padding: 20px; }
-            .box { background:#f8f8f8; padding:15px; border-radius:8px; margin: 15px 0; }
+            body { font-family: Arial; padding: 20px; background: #fafafa; }
+            .box { background:#fff; padding:15px; border-radius:8px; margin: 15px 0; border:1px solid #eee; }
             .title { font-size:22px; font-weight:bold; }
             .val { font-size:26px; color:#333; font-weight:bold; }
           </style>
